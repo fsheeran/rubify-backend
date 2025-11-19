@@ -1,35 +1,47 @@
-import pytest
-from src.cjk_util import is_han, katakana_to_hiragana, segment_on_han
-from src.models import AnnotatedTextSegment
+import regex as re
+from src.cjk_util import (
+    katakana_to_hiragana,
+    segment_on_han,
+    is_han_regexp,
+    contains_han_regexp,
+)
+from src.models import AnnotatedTextSegment, Annotation
+
+
+def assert_regex_match(regex: re.Pattern, string: str, span: tuple[int, int]):
+    match = regex.match(string)
+    assert match.span() == span
+    assert match.string == string
 
 
 class TestIsHan:
-    def test_is_han_chinese_characters(self):
+    def test_is_han_regexp_chinese_characters(self):
         """Test is_han with Chinese characters"""
-        assert is_han("漢") is True
-        assert is_han("字") is True
-        assert is_han("你好") is True
+        assert_regex_match(is_han_regexp, "漢", (0, 1))
 
-    def test_is_han_japanese_hiragana(self):
+    def test_is_han_regexp_japanese_hiragana(self):
         """Test is_han with Japanese hiragana"""
-        assert is_han("あ") is False
-        assert is_han("こんにちは") is False
+        assert is_han_regexp.match("あ") is None
+        assert is_han_regexp.match("こんにちは") is None
 
-    def test_is_han_japanese_katakana(self):
+    def test_is_han_regexp_japanese_katakana(self):
         """Test is_han with Japanese katakana"""
-        assert is_han("ア") is False
-        assert is_han("カタカナ") is False
+        assert is_han_regexp.match("ア") is None
+        assert is_han_regexp.match("カタカナ") is None
 
-    def test_is_han_korean_hangul(self):
+    def test_is_han_regexp_korean_hangul(self):
         """Test is_han with Korean Hangul characters"""
         # Hangul is not Han script
-        assert is_han("안") is False
-        assert is_han("녕하세요") is False
+        assert is_han_regexp.match("안") is None
 
-    def test_is_han_mixed_cjk(self):
-        """Test is_han with mixed CJK characters"""
-        assert is_han("漢あ") is True  # Starts with Han
-        assert is_han("あ漢") is True  # Starts with non-Han (hiragana)
+    def test_contains_han_regexp(self):
+        """Test contains_han_regexp"""
+        assert_regex_match(contains_han_regexp, "漢字", (0, 2))
+
+        assert contains_han_regexp.match("こんにちは") is None
+
+        assert_regex_match(contains_han_regexp, "漢字です", (0, 4))
+        assert_regex_match(contains_han_regexp, "です漢字", (0, 4))
 
 
 class TestKatakanaToHiragana:
@@ -57,8 +69,14 @@ class TestSegmentOnHan:
         """Test segment_on_han with all Han characters"""
         text = "漢字"
         result = segment_on_han(text)
-        assert result == [AnnotatedTextSegment(indices=(0, 2), annotations=[])]
-
+        assert result == [
+            AnnotatedTextSegment(
+                indices=(0, 1), annotations=[Annotation(indices=(0, 1))]
+            ),
+            AnnotatedTextSegment(
+                indices=(1, 2), annotations=[Annotation(indices=(1, 2))]
+            ),
+        ]
 
     def test_segment_on_han_no_han(self):
         """Test segment_on_han with no Han characters"""
@@ -70,17 +88,55 @@ class TestSegmentOnHan:
         """Test segment_on_han with mixed Han and non-Han"""
         text = "漢字です"
         result = segment_on_han(text)
-        assert result == [AnnotatedTextSegment(indices=(0, 2), annotations=[]), AnnotatedTextSegment(indices=(2, 4), annotations=None)]
+        assert result == [
+            AnnotatedTextSegment(
+                indices=(0, 1), annotations=[Annotation(indices=(0, 1))]
+            ),
+            AnnotatedTextSegment(
+                indices=(1, 2), annotations=[Annotation(indices=(1, 2))]
+            ),
+            AnnotatedTextSegment(indices=(2, 4), annotations=None),
+        ]
 
     def test_segment_on_han_with_offset(self):
         """Test segment_on_han with offset"""
         text = "漢字です"
         result = segment_on_han(text, index_offset=1)
-        assert result == [AnnotatedTextSegment(indices=(1, 3), annotations=[]), AnnotatedTextSegment(indices=(3, 5), annotations=None)]
+        assert result == [
+            AnnotatedTextSegment(
+                indices=(1, 2), annotations=[Annotation(indices=(1, 2))]
+            ),
+            AnnotatedTextSegment(
+                indices=(2, 3), annotations=[Annotation(indices=(2, 3))]
+            ),
+            AnnotatedTextSegment(indices=(3, 5), annotations=None),
+        ]
+
+    def test_segment_on_han_interleaved(self):
+        """Test segment_on_han with interleaved Han and non-Han"""
+        text = "打ち合わせ"
+        result = segment_on_han(text)
+        assert result == [
+            AnnotatedTextSegment(
+                indices=(0, 1), annotations=[Annotation(indices=(0, 1))]
+            ),
+            AnnotatedTextSegment(indices=(1, 2), annotations=None),
+            AnnotatedTextSegment(
+                indices=(2, 3), annotations=[Annotation(indices=(2, 3))]
+            ),
+            AnnotatedTextSegment(indices=(3, 5), annotations=None),
+        ]
 
     def test_segment_on_han_ends_with_han(self):
         """Test segment_on_han with ends with Han"""
         text = "です漢字"
         result = segment_on_han(text)
-        assert result == [AnnotatedTextSegment(indices=(0, 2), annotations=None), AnnotatedTextSegment(indices=(2, 4), annotations=[])]
-
+        assert result == [
+            AnnotatedTextSegment(indices=(0, 2), annotations=None),
+            AnnotatedTextSegment(
+                indices=(2, 3), annotations=[Annotation(indices=(2, 3))]
+            ),
+            AnnotatedTextSegment(
+                indices=(3, 4), annotations=[Annotation(indices=(3, 4))]
+            ),
+        ]

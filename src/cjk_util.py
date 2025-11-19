@@ -1,7 +1,7 @@
 import regex as re
 from collections import OrderedDict
 
-from .models import AnnotatedTextSegment
+from .models import AnnotatedTextSegment, Annotation
 
 
 _kata_to_hira = OrderedDict(
@@ -10,8 +10,8 @@ _kata_to_hira = OrderedDict(
         for codepoint in range(ord("ぁ"), ord("ゖ") + 1)
     }
 )
-_han_regexp = re.compile(r".*\p{Script=Han}.*", flags=re.U)
-is_han = lambda test_str: bool(_han_regexp.match(test_str))
+is_han_regexp = re.compile(r"\p{Script=Han}", flags=re.U)
+contains_han_regexp = re.compile(r".*\p{Script=Han}.*", flags=re.U)
 
 
 def katakana_to_hiragana(string: str) -> str:
@@ -29,27 +29,34 @@ def katakana_to_hiragana(string: str) -> str:
 
 
 def segment_on_han(text: str, index_offset: int = 0) -> list[AnnotatedTextSegment]:
-    segments = []
-    curr_segment_start = -1
-    for i in range(len(text)):
-        is_curr_han = bool(is_han(text[i]))
-        if curr_segment_start < 0:
-            curr_segment_start = i - 1
-            continue
+    annotated_segments = [
+        AnnotatedTextSegment(
+            indices=(i + index_offset, i + 1 + index_offset), annotations=[Annotation(indices=(i + index_offset, i + 1 + index_offset))]
+        )
+        for i, ch in enumerate(text)
+        if is_han_regexp.match(ch)
+    ]
 
-        if bool(is_han(text[curr_segment_start])) != is_curr_han:
+    if not annotated_segments:
+        return [AnnotatedTextSegment(indices=(0, len(text)), annotations=None)]
+
+    segments = (
+        [AnnotatedTextSegment(indices=(index_offset, annotated_segments[0].indices[0] + index_offset))]
+        if annotated_segments[0].indices[0] > index_offset
+        else []
+    )
+    for segment in annotated_segments:
+        if segments and segments[-1].indices[1] < segment.indices[0]:
             segments.append(
                 AnnotatedTextSegment(
-                    indices=(curr_segment_start + index_offset, i + index_offset),
-                    annotations=None if is_curr_han else [])
+                    indices=(segments[-1].indices[1], segment.indices[0])
+                )
             )
-            curr_segment_start = -1
-    if curr_segment_start >= 0:
+        segments.append(segment)
+
+    if segments[-1].indices[1] < len(text):
         segments.append(
-            AnnotatedTextSegment(
-                indices=(curr_segment_start + index_offset, len(text) + index_offset),
-                annotations=[] if is_han(text[curr_segment_start]) else None,
-            )
+            AnnotatedTextSegment(indices=(segments[-1].indices[1], len(text) + index_offset))
         )
 
     return segments

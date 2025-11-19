@@ -1,7 +1,7 @@
 # need to use regex since standard library re does not support matching unicode properties
 from typing import Protocol
 from difflib import get_close_matches
-from .cjk_util import is_han, segment_on_han
+from .cjk_util import is_han_regexp, contains_han_regexp, segment_on_han
 
 from .segmentation import Lexeme
 from .pronunciation import CjkPronunciationProvider
@@ -22,10 +22,23 @@ class DefaultAnnotator:
         index = 0
         segments = []
         for lexeme in lexemes:
-            if is_han(lexeme.surface):
-                segments.append(AnnotatedTextSegment(indices=(index, index + len(lexeme.surface)), annotations=[]))
-            else:
-                segments.append(AnnotatedTextSegment(indices=(index, index + len(lexeme.surface))))
+            if not contains_han_regexp.match(lexeme.surface):
+                segments.append(
+                    AnnotatedTextSegment(indices=(index, index + len(lexeme.surface)))
+                )
+                index += len(lexeme.surface)
+                continue
+
+            annotations = []
+            for i, ch in enumerate(lexeme.surface):
+                if is_han_regexp.match(ch):
+                    annotations.append(Annotation(indices=(index + i, index + i + 1)))
+            segments.append(
+                AnnotatedTextSegment(
+                    indices=(index, index + len(lexeme.surface)),
+                    annotations=annotations,
+                )
+            )
             index += len(lexeme.surface)
         return segments
 
@@ -43,26 +56,39 @@ class FuriganaAnnotator:
         segment_start = 0
         for lexeme in lexemes:
             indices = (segment_start, segment_start + len(lexeme.surface))
-            if not is_han(lexeme.surface):
+            if not contains_han_regexp.match(lexeme.surface):
                 segments.append(AnnotatedTextSegment(indices=indices))
                 segment_start = indices[1]
                 continue
 
-            try:
-                furigana_entries = self.pronunciation_provider[lexeme.base_form if lexeme.base_form else lexeme.surface]
-            except KeyError:
-                furigana_entries = None
-            if not furigana_entries:
+            if lexeme.surface in self.pronunciation_provider:
+                furigana_entries = self.pronunciation_provider[lexeme.surface]
+            elif lexeme.base_form and lexeme.base_form in self.pronunciation_provider:
+                furigana_entries = self.pronunciation_provider[lexeme.base_form]
+            else:
                 segments.extend(segment_on_han(lexeme.surface, segment_start))
                 segment_start = indices[1]
                 continue
 
-            best_fit_pronunciation = get_close_matches(lexeme.pronunciation.value, [entry.pronunciation for entry in furigana_entries], n=1)
-            if not best_fit_pronunciation:
-                segments.extend(segment_on_han(lexeme.surface, segment_start))
-                segment_start = indices[1]
-                continue
-            best_fit = next(entry for entry in furigana_entries if entry.pronunciation == best_fit_pronunciation[0])
+            if lexeme.pronunciation:
+                best_fit_pronunciation = get_close_matches(
+                    lexeme.pronunciation.value,
+                    [entry.pronunciation for entry in furigana_entries],
+                    # at least one character should match
+                    cutoff=1.0 / len(lexeme.pronunciation.value),
+                    n=1,
+                )
+                if not best_fit_pronunciation:
+                    segments.extend(segment_on_han(lexeme.surface, segment_start))
+                    segment_start = indices[1]
+                    continue
+                best_fit = next(
+                    entry
+                    for entry in furigana_entries
+                    if entry.pronunciation == best_fit_pronunciation[0]
+                )
+            else:
+                best_fit = furigana_entries[0]
 
             annotations = []
             for fg_indices, pronunciation in best_fit.per_char:
@@ -79,11 +105,12 @@ class FuriganaAnnotator:
 
             segments.append(
                 AnnotatedTextSegment(
-                    indices= indices,
+                    indices=indices,
                     annotations=annotations,
                 )
             )
             segment_start += len(lexeme.surface)
+        logging.info(f"Successfully annotated {len(segments)} segments")
         return segments
 
     def can_annotate(self, request: AnnotateRequest) -> bool:

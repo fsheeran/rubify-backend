@@ -6,7 +6,7 @@ from .pronunciation import load_furigana_json
 
 from .annotation import AnnotationProvider, DefaultAnnotator, FuriganaAnnotator
 
-from .models import AnnotateRequest
+from .models import AnnotateRequest, AnnotatedTextSegment
 
 from .services import PriorityRegistry, SegmentationService, SegmentAnnotationService
 from .segmentation import DefaultSegmenter, JapaneseSegmenter, SegmentationProvider
@@ -44,7 +44,7 @@ def read_root():
     return {"Hello": "World"}
 
 
-@app.post("/annotate", response_model_exclude_none=True)
+@app.post("/annotate", response_model=list[AnnotatedTextSegment], response_model_exclude_none=True)
 def annotate_base_text(
     request: AnnotateRequest,
     segmentation_service: SegmentationService = Depends(get_segmentation_service),
@@ -54,20 +54,3 @@ def annotate_base_text(
 ):
     segments = segmentation_service.segment(request)
     return segment_annotation_service.annotate(request, segments)
-
-    # return [
-    #     (
-    #         TextSegmentModel(
-    #             indices=indices,
-    #             annotations=[
-    #                 AnnotationModel(indices=an_ind, annotation_text=text)
-    #                 for an_ind, text in annotations
-    #             ],
-    #         )
-    #         if annotations
-    #         else TextSegmentModel(indices=indices)
-    #     )
-    #     for indices, annotations in annotator.annotate(
-    #         request.base_text, request.language
-    #     )
-    # ]

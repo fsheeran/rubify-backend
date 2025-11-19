@@ -101,7 +101,7 @@ Annotates text with segmentation and pronunciation guides.
 
 **Response Fields:**
 - `indices`: Tuple `[start, end]` indicating the character range in the original text of the text segment
-- `annotations`: Optional list of annotation objects (segments that need no pronunciation guides, such as those that contain only hangul, kana, or latin characters, do not have an `annotations` attribute). This list can be empty if the service knows a given segment should, but cannot determine what precicely that annotation should be. Each annotation object contains:
+- `annotations`: Optional list of annotation objects (segments that need no pronunciation guides, such as those that contain only hangul, kana, or latin characters, do not have an `annotations` attribute). Each annotation object contains:
   - `indices`: Character range for this specific annotation
   - `annotation_text`: The pronunciation guide (e.g., hiragana for kanji).
 
