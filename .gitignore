@@ -1,0 +1,6 @@
+.venv/
+*.pyc
+__pycache__/
+.vscode/
+JmdictFurigana.json
+.pytest_cache/

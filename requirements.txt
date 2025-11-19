@@ -1,0 +1,7 @@
+fastapi[standard]==0.121.1
+regex==2025.11.3
+SudachiPy==0.6.10
+requests==2.32.5
+sudachidict_core==20251022
+pytest==8.3.4
+pytest-asyncio==0.24.0
